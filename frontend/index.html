@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fraud Sentinel — AML Investigation Dashboard</title>
+<style>
+  :root {
+    --bg: #0a0a0f; --bg2: #12121a; --bg3: #16161f; --bg4: #1c1c28;
+    --bg5: #1e1e2a; --border: #2a2a3a; --border2: #333346;
+    --fg: #e8e8f0; --fg2: #9898b0; --muted: #6868808c;
+    --accent: #6366f1; --accent2: #818cf8; --green: #22c55e;
+    --yellow: #eab308; --red: #ef4444; --critical: #dc2626;
+    --blue: #3b82f6; --orange: #f59e0b; --gray: #6b7280;
+    --cyan: #06b6d4; --purple: #a855f7; --pink: #ec4899;
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', ui-monospace, monospace;
+    --r: 10px; --rl: 14px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: var(--font); background: var(--bg); color: var(--fg); line-height: 1.5; min-height: 100vh; }
+  .app { display: flex; min-height: 100vh; }
+
+  .sidebar { width: 220px; background: var(--bg2); border-right: 1px solid var(--border); padding: 16px 0; flex-shrink: 0; display: flex; flex-direction: column; position: fixed; top: 0; bottom: 0; z-index: 10; }
+  .brand { padding: 0 16px 16px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+  .brand h1 { font-size: 16px; font-weight: 700; background: linear-gradient(135deg, var(--accent), var(--purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .brand .sub { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
+  .nav { padding: 4px 0; flex: 1; overflow-y: auto; }
+  .nav-item { padding: 9px 16px; font-size: 12px; font-weight: 500; color: var(--fg2); cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 9px; border-left: 2px solid transparent; }
+  .nav-item:hover { background: var(--bg4); color: var(--fg); }
+  .nav-item.active { background: var(--bg4); color: var(--accent); border-left-color: var(--accent); }
+  .nav-icon { font-size: 14px; width: 18px; text-align: center; }
+  .nav-section { padding: 12px 16px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+  .sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border); }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.disconnected { background: var(--red); }
+  .status-dot.connecting { background: var(--yellow); }
+  .status-text { font-size: 11px; color: var(--fg2); }
+
+  .main { flex: 1; padding: 20px 28px; margin-left: 220px; overflow-y: auto; max-height: 100vh; }
+  .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .page-title { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+  .page-sub { font-size: 12px; color: var(--fg2); margin-top: 2px; }
+
+  .connect-bar { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 16px; display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  .connect-bar input { flex: 1; background: var(--bg5); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; color: var(--fg); font-family: var(--mono); font-size: 12px; outline: none; min-width: 120px; }
+  .connect-bar input:focus { border-color: var(--accent); }
+
+  .card { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--rl); overflow: hidden; }
+  .card-h { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .card-t { font-size: 14px; font-weight: 600; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .stat { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r); padding: 14px 16px; }
+  .stat-l { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+  .stat-v { font-size: 24px; font-weight: 700; margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; padding: 10px 14px; font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border-bottom: 1px solid var(--border); }
+  td { padding: 11px 14px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover { background: var(--bg4); }
+  tr.clickable { cursor: pointer; }
+
+  .b { display: inline-flex; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 600; letter-spacing: 0.02em; }
+  .b-critical { background: #dc262620; color: var(--critical); }
+  .b-high { background: #ef444420; color: var(--red); }
+  .b-medium { background: #eab30820; color: var(--yellow); }
+  .b-low { background: #22c55e20; color: var(--green); }
+  .b-open { background: #3b82f620; color: var(--blue); }
+  .b-investigating { background: #f59e0b20; color: var(--orange); }
+  .b-escalated { background: #ef444420; color: var(--red); }
+  .b-closed { background: #6b728020; color: var(--gray); }
+  .b-urgent { background: #dc262620; color: var(--critical); }
+  .b-normal { background: #3b82f615; color: var(--blue); }
+  .b-person { background: #6366f120; color: var(--accent); }
+  .b-company { background: #a855f720; color: var(--purple); }
+  .b-account { background: #06b6d420; color: var(--cyan); }
+  .b-device { background: #22c55e20; color: var(--green); }
+  .b-ip_address { background: #eab30820; color: var(--yellow); }
+  .b-beneficiary { background: #ec489920; color: var(--pink); }
+  .b-mule_handler { background: #dc262620; color: var(--critical); }
+  .b-LOW { background: #22c55e20; color: var(--green); }
+  .b-MEDIUM { background: #eab30820; color: var(--yellow); }
+  .b-HIGH { background: #ef444420; color: var(--red); }
+  .b-APPROVE { background: #22c55e20; color: var(--green); }
+  .b-REVIEW { background: #eab30820; color: var(--yellow); }
+  .b-BLOCK { background: #ef444420; color: var(--red); }
+
+  .btn { padding: 7px 14px; border-radius: var(--r); font-size: 12px; font-weight: 500; border: 1px solid var(--border); background: var(--bg5); color: var(--fg); cursor: pointer; transition: all 0.15s; }
+  .btn:hover { border-color: var(--accent); background: var(--bg4); }
+  .btn-p { background: var(--accent); border-color: var(--accent); color: white; }
+  .btn-p:hover { background: var(--accent2); }
+  .btn-d { background: #dc262620; border-color: #dc262640; color: var(--red); }
+  .btn-d:hover { background: #dc262630; }
+  .btn-g { background: #22c55e20; border-color: #22c55e40; color: var(--green); }
+  .btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .dp { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .ds { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r); padding: 14px 16px; }
+  .ds.fw { grid-column: 1 / -1; }
+  .dl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+  .dv { font-size: 13px; font-weight: 500; }
+  .dr { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .dr:last-child { border-bottom: none; }
+
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  .tab { padding: 9px 16px; font-size: 12px; font-weight: 500; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
+  .tab:hover { color: var(--fg2); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .search-box { display: flex; gap: 8px; margin-bottom: 16px; }
+  .search-input { flex: 1; background: var(--bg5); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 14px; color: var(--fg); font-size: 13px; outline: none; }
+  .search-input:focus { border-color: var(--accent); }
+  .search-result { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r); padding: 14px 16px; margin-bottom: 10px; cursor: pointer; transition: border-color 0.15s; }
+  .search-result:hover { border-color: var(--accent); }
+  .search-result-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .search-result-meta { font-size: 11px; color: var(--fg2); margin-bottom: 6px; }
+  .search-result-excerpt { font-size: 12px; color: var(--fg2); line-height: 1.6; }
+
+  .kg-container { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; position: relative; }
+  .kg-svg { width: 100%; height: 500px; }
+  .kg-legend { position: absolute; top: 12px; right: 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 14px; font-size: 11px; }
+  .kg-legend-item { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .kg-legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  .narrative { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); padding: 14px; font-family: var(--mono); font-size: 11px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; color: var(--fg2); max-height: 400px; overflow-y: auto; }
+
+  .flow-step { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .flow-step:last-child { border-bottom: none; }
+  .flow-arrow { color: var(--accent); font-size: 16px; }
+  .flow-amt { font-weight: 600; font-family: var(--mono); color: var(--green); }
+  .flow-amt.flagged { color: var(--red); }
+
+  .modal-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .modal { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--rl); max-width: 700px; width: 100%; max-height: 80vh; overflow: auto; }
+  .modal-h { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .modal-b { padding: 18px; }
+
+  .hidden { display: none !important; }
+  .loading { display: flex; align-items: center; justify-content: center; padding: 32px; color: var(--muted); font-size: 12px; gap: 8px; }
+  .spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .empty { text-align: center; padding: 36px; color: var(--muted); font-size: 12px; }
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 500; margin-right: 4px; }
+
+  .scenario-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+  .scenario-card { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r); padding: 16px; cursor: pointer; transition: border-color 0.15s; }
+  .scenario-card:hover { border-color: var(--accent); }
+  .scenario-card.running { border-color: var(--yellow); opacity: 0.7; pointer-events: none; }
+  .scenario-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .scenario-desc { font-size: 11px; color: var(--fg2); line-height: 1.5; margin-bottom: 10px; }
+
+  .timeline { position: relative; padding-left: 28px; }
+  .timeline::before { content: ''; position: absolute; left: 8px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+  .tl-item { position: relative; padding: 8px 0 8px 16px; border-bottom: 1px solid var(--border); }
+  .tl-item:last-child { border-bottom: none; }
+  .tl-dot { position: absolute; left: -24px; top: 12px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); }
+  .tl-dot.detection { background: var(--blue); }
+  .tl-dot.compliance { background: var(--purple); }
+  .tl-dot.sar { background: var(--green); }
+  .tl-dot.alert { background: var(--red); }
+  .tl-time { font-size: 10px; color: var(--muted); }
+  .tl-title { font-size: 12px; font-weight: 600; margin: 2px 0; }
+  .tl-desc { font-size: 11px; color: var(--fg2); }
+
+  .tool-log { max-height: 300px; overflow-y: auto; font-family: var(--mono); font-size: 11px; }
+  .tool-log-item { padding: 6px 10px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: flex-start; }
+  .tool-log-item:last-child { border-bottom: none; }
+  .tool-log-name { font-weight: 600; color: var(--accent); white-space: nowrap; }
+  .tool-log-status { font-size: 10px; }
+  .tool-log-status.ok { color: var(--green); }
+  .tool-log-status.err { color: var(--red); }
+  .tool-log-status.pending { color: var(--yellow); }
+  .tool-log-detail { color: var(--fg2); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar">
+    <div class="brand"><h1>Fraud Sentinel</h1><div class="sub">AML Investigation Platform</div></div>
+    <div class="nav">
+      <div class="nav-item active" data-page="dashboard" onclick="showPage('dashboard')"><span class="nav-icon">&#9632;</span>Dashboard</div>
+      <div class="nav-item" data-page="cases" onclick="showPage('cases')"><span class="nav-icon">&#9783;</span>Cases</div>
+      <div class="nav-item" data-page="customers" onclick="showPage('customers')"><span class="nav-icon">&#9823;</span>Customers</div>
+      <div class="nav-item" data-page="alerts" onclick="showPage('alerts')"><span class="nav-icon">&#9888;</span>Alerts</div>
+      <div class="nav-section">Fraud Sentinel</div>
+      <div class="nav-item" data-page="scenarios" onclick="showPage('scenarios')"><span class="nav-icon">&#9654;</span>Demo Scenarios</div>
+      <div class="nav-item" data-page="agent-timeline" onclick="showPage('agent-timeline')"><span class="nav-icon">&#9776;</span>Agent Timeline</div>
+      <div class="nav-section">Intelligence</div>
+      <div class="nav-item" data-page="rag" onclick="showPage('rag')"><span class="nav-icon">&#9998;</span>RAG Search</div>
+      <div class="nav-item" data-page="kg" onclick="showPage('kg')"><span class="nav-icon">&#9672;</span>Knowledge Graph</div>
+      <div class="nav-section">System</div>
+      <div class="nav-item" data-page="audit" onclick="showPage('audit')"><span class="nav-icon">&#9776;</span>Audit Log</div>
+    </div>
+    <div class="sidebar-footer">
+      <span class="status-dot" id="sDotMCP"></span><span class="status-text" id="sTextMCP">MCP: Disconnected</span><br>
+      <span class="status-dot" id="sDotAPI"></span><span class="status-text" id="sTextAPI">API: Disconnected</span>
+    </div>
+  </nav>
+
+  <main class="main">
+    <div class="connect-bar">
+      <input type="text" id="serverUrl" value="http://localhost:3000/mcp" placeholder="MCP Server URL" style="max-width:240px">
+      <input type="text" id="apiUrl" value="http://localhost:8000" placeholder="API Server URL" style="max-width:200px">
+      <button class="btn btn-p" onclick="connectAll()">Connect</button>
+      <button class="btn" onclick="loadAll()">Refresh</button>
+      <span style="font-size:11px;color:var(--fg2);margin-left:auto" id="connInfo">Connect to start</span>
+    </div>
+
+    <!-- ═══ DASHBOARD ═══ -->
+    <div id="pg-dashboard">
+      <div class="page-header"><div><div class="page-title">Investigation Dashboard</div><div class="page-sub">Financial crime case management overview</div></div></div>
+      <div class="stats" id="statsRow">
+        <div class="stat"><div class="stat-l">Open Cases</div><div class="stat-v" id="s1">-</div></div>
+        <div class="stat"><div class="stat-l">Active Alerts</div><div class="stat-v" id="s2">-</div></div>
+        <div class="stat"><div class="stat-l">Customers</div><div class="stat-v" id="s3">-</div></div>
+        <div class="stat"><div class="stat-l">KG Entities</div><div class="stat-v" id="s4">-</div></div>
+        <div class="stat"><div class="stat-l">Regulations</div><div class="stat-v" id="s5">-</div></div>
+      </div>
+      <div class="dp">
+        <div class="card"><div class="card-h"><div class="card-t">Recent Cases</div></div><div id="dCases"></div></div>
+        <div class="card"><div class="card-h"><div class="card-t">Open Alerts</div></div><div id="dAlerts"></div></div>
+      </div>
+      <div style="margin-top:12px">
+        <button class="btn btn-g" onclick="showPage('scenarios')">Run Demo Scenarios</button>
+        <button class="btn" onclick="showPage('agent-timeline')">View Agent Timeline</button>
+      </div>
+    </div>
+
+    <!-- ═══ DEMO SCENARIOS ═══ -->
+    <div id="pg-scenarios" class="hidden">
+      <div class="page-header"><div><div class="page-title">Demo Scenarios</div><div class="page-sub">Execute complete CrewAI workflow for each fraud pattern</div></div></div>
+      <div class="scenario-grid" id="scenarioGrid"></div>
+      <div id="scenarioResult" class="hidden" style="margin-top:16px"></div>
+      <div id="scenarioToolLog" class="hidden" style="margin-top:12px">
+        <div class="card"><div class="card-h"><div class="card-t">MCP Tool Execution Log</div></div><div class="tool-log" id="toolLogContent"></div></div>
+      </div>
+    </div>
+
+    <!-- ═══ AGENT TIMELINE ═══ -->
+    <div id="pg-agent-timeline" class="hidden">
+      <div class="page-header"><div><div class="page-title">Agent Activity Timeline</div><div class="page-sub">CrewAI agent collaboration and investigation history</div></div>
+        <button class="btn" onclick="document.getElementById('agentTimelineContent').innerHTML='<div class=\\'empty\\'>No activity yet. Run a demo scenario first.</div>'">Clear</button>
+      </div>
+      <div class="ds fw"><div class="dl">Investigation Timeline</div><div class="timeline" id="agentTimelineContent"><div class="empty">No activity yet. Run a demo scenario to see agent collaboration.</div></div></div>
+    </div>
+
+    <!-- ═══ CASES ═══ -->
+    <div id="pg-cases" class="hidden">
+      <div class="page-header"><div><div class="page-title">Case Queue</div><div class="page-sub">All investigation cases</div></div></div>
+      <div class="card"><div id="caseTbl"></div></div>
+      <div id="caseDetail" class="hidden" style="margin-top:16px">
+        <div class="page-header">
+          <div><div class="page-title" id="cdTitle">Case Detail</div><div class="page-sub" id="cdSub"></div></div>
+          <div class="btn-group">
+            <button class="btn" onclick="runTool('flag_layering_pattern',{customerId:selCase?.customer?.customerCode})">Flag Layering</button>
+            <button class="btn" onclick="runTool('score_alert',{customerId:selCase?.customer?.customerCode,alertSeverity:selCase?.alert?.severity==='critical'?'high':selCase?.alert?.severity})">Score Alert</button>
+            <button class="btn btn-d" onclick="runDraftSar()">Draft SAR</button>
+            <button class="btn" onclick="searchRegsForCase()">Search Regulations</button>
+            <button class="btn" onclick="document.getElementById('caseDetail').classList.add('hidden')">Close</button>
+          </div>
+        </div>
+        <div class="tabs" id="cdTabs">
+          <div class="tab active" onclick="cdTab('evidence')">Evidence</div>
+          <div class="tab" onclick="cdTab('graph')">Entity Graph</div>
+          <div class="tab" onclick="cdTab('timeline')">Timeline</div>
+          <div class="tab" onclick="cdTab('sar')">SAR Draft</div>
+        </div>
+        <div id="cdt-evidence"></div>
+        <div id="cdt-graph" class="hidden"></div>
+        <div id="cdt-timeline" class="hidden"></div>
+        <div id="cdt-sar" class="hidden"></div>
+      </div>
+    </div>
+
+    <!-- ═══ CUSTOMERS ═══ -->
+    <div id="pg-customers" class="hidden">
+      <div class="page-header"><div><div class="page-title">Customers</div><div class="page-sub">Customer profiles and risk ratings</div></div></div>
+      <div class="card"><div id="custTbl"></div></div>
+      <div id="custDetail" class="hidden" style="margin-top:16px"></div>
+    </div>
+
+    <!-- ═══ ALERTS ═══ -->
+    <div id="pg-alerts" class="hidden">
+      <div class="page-header"><div><div class="page-title">Alerts</div><div class="page-sub">All fraud/AML alerts</div></div></div>
+      <div class="card"><div id="alertTbl"></div></div>
+    </div>
+
+    <!-- ═══ RAG SEARCH ═══ -->
+    <div id="pg-rag" class="hidden">
+      <div class="page-header"><div><div class="page-title">Regulatory Knowledge Base</div><div class="page-sub">Search BSA/AML regulations, FATF recommendations, RBI guidelines</div></div></div>
+      <div class="search-box">
+        <input type="text" class="search-input" id="ragQuery" placeholder="Search regulations... e.g. 'structuring CTR money laundering'" onkeydown="if(event.key==='Enter')doRagSearch()">
+        <button class="btn btn-p" onclick="doRagSearch()">Search</button>
+        <button class="btn" onclick="doRagSearchAPI()">Search via RAG API</button>
+      </div>
+      <div id="ragResults"></div>
+      <div id="ragDocView" class="hidden" style="margin-top:16px"></div>
+    </div>
+
+    <!-- ═══ KNOWLEDGE GRAPH ═══ -->
+    <div id="pg-kg" class="hidden">
+      <div class="page-header">
+        <div><div class="page-title">Knowledge Graph</div><div class="page-sub">Entity relationship network &mdash; drag nodes to explore connections</div></div>
+        <div class="btn-group">
+          <button class="btn btn-p" onclick="loadKG()">Load Full Graph</button>
+          <button class="btn btn-d" onclick="detectMuleNetwork()">Detect Mule Networks</button>
+          <button class="btn" onclick="loadHighRisk()">High Risk Entities</button>
+        </div>
+      </div>
+      <div class="kg-container">
+        <svg class="kg-svg" id="kgSvg"></svg>
+        <div class="kg-legend" id="kgLegend">
+          <div class="dl" style="margin-bottom:6px">Entity Types</div>
+          <div class="kg-legend-item"><div class="kg-legend-dot" style="background:var(--accent)"></div>Person</div>
+          <div class="kg-legend-item"><div class="kg-legend-dot" style="background:var(--purple)"></div>Company</div>
+          <div class="kg-legend-item"><div class="kg-legend-dot" style="background:var(--cyan)"></div>Account</div>
+          <div class="kg-legend-item"><div class="kg-legend-dot" style="background:var(--green)"></div>Device</div>
+          <div class="kg-legend-item"><div class="kg-legend-dot" style="background:var(--yellow)"></div>IP Address</div>
+          <div class="kg-legend-item"><div class="kg-legend-dot" style="background:var(--pink)"></div>Beneficiary</div>
+          <div class="kg-legend-item"><div class="kg-legend-dot" style="background:var(--critical)"></div>Mule Handler</div>
+        </div>
+      </div>
+      <div id="kgInfo" style="margin-top:12px"></div>
+    </div>
+
+    <!-- ═══ AUDIT ═══ -->
+    <div id="pg-audit" class="hidden">
+      <div class="page-header"><div><div class="page-title">Audit Log</div><div class="page-sub">Tool invocation history &mdash; entries appear after actions are run</div></div></div>
+      <div class="card"><div id="auditTbl"><div class="empty">Run tools to generate audit entries.</div></div></div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// Fraud Sentinel — Full Dashboard Client
+// ══════════════════════════════════════════════════════════════
+let sid=null, rid=0, mcpConnected=false, apiConnected=false, selCase=null;
+let S={cases:[],alerts:[],customers:[],auditLog:[],kgEntities:[],kgRels:[],ragDocs:[]};
+let agentTimeline=[], toolLog=[], scenarioInProgress=false;
+
+function g(id){return document.getElementById(id)}
+
+// ── MCP Transport ──────────────────────────────────────────
+async function mcp(method,params={}){
+  const url=g('serverUrl').value;
+  const h={'Content-Type':'application/json','Accept':'application/json, text/event-stream'};
+  if(sid)h['Mcp-Session-Id']=sid;
+  const r=await fetch(url,{method:'POST',headers:h,body:JSON.stringify({jsonrpc:'2.0',id:++rid,method,params})});
+  const ns=r.headers.get('Mcp-Session-Id');if(ns)sid=ns;
+  const ct=r.headers.get('Content-Type')||'';
+  if(ct.includes('text/event-stream')){
+    const t=await r.text();let d=null;
+    for(const l of t.split('\n'))if(l.startsWith('data:'))try{d=JSON.parse(l.slice(5))}catch{}
+    return d?.result||d;
+  }
+  return r.json();
+}
+
+async function api(path,method='GET',body=null){
+  const url=g('apiUrl').value;
+  const opts={method,headers:{'Accept':'application/json'}};
+  if(body){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body);}
+  const r=await fetch(url+path,opts);
+  if(!r.ok)throw new Error(`API ${r.status}: ${r.statusText}`);
+  return r.json();
+}
+
+async function connectAll(){
+  await connectMCP();
+  await connectAPI();
+}
+async function connectMCP(){
+  try{
+    setMCPStatus('connecting');
+    await mcp('initialize',{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'fraud-sentinel-dashboard',version:'1.0.0'}});
+    mcpConnected=true;setMCPStatus('connected');
+  }catch(e){mcpConnected=false;setMCPStatus('disconnected');}
+  await loadAll();
+}
+async function connectAPI(){
+  try{
+    setAPIStatus('connecting');
+    const h=await api('/health');
+    apiConnected=true;setAPIStatus('connected');
+  }catch(e){apiConnected=false;setAPIStatus('disconnected');}
+}
+function setMCPStatus(s){const d=g('sDotMCP'),t=g('sTextMCP');d.className='status-dot '+s;t.textContent='MCP: '+(s==='connected'?'Connected':s==='connecting'?'Connecting...':'Disconnected');updateConnInfo();}
+function setAPIStatus(s){const d=g('sDotAPI'),t=g('sTextAPI');d.className='status-dot '+s;t.textContent='API: '+(s==='connected'?'Connected':s==='connecting'?'Connecting...':'Disconnected');updateConnInfo();}
+function updateConnInfo(){
+  g('connInfo').textContent=mcpConnected&&apiConnected?'Both connected'
+    :mcpConnected?'MCP connected, API disconnected'
+    :apiConnected?'API connected, MCP disconnected'
+    :'Disconnected';
+}
+
+// ── Data Loading ───────────────────────────────────────────
+async function loadAll(){
+  if(!mcpConnected)return;
+  try{
+    const caseIds=['CASE-001','CASE-002','CASE-003'];
+    S.cases=[];
+    for(const cid of caseIds){
+      try{const ev=await mcp('resources/read',{uri:`case://${cid}/evidence`});const c=ev?.contents?.[0]?.text;if(c)S.cases.push(JSON.parse(c));}catch{}
+    }
+    const codes=['CUST-001','CUST-002','CUST-003','CUST-004','CUST-005'];
+    S.customers=[];
+    for(const cc of codes){
+      try{const ev=await mcp('resources/read',{uri:`customer://${cc}/profile`});const c=ev?.contents?.[0]?.text;if(c)S.customers.push(JSON.parse(c));}catch{}
+      try{const ev=await mcp('resources/read',{uri:`customer://${cc}/timeline`});const c=ev?.contents?.[0]?.text;if(c){const t=JSON.parse(c);const cu=S.customers.find(x=>x.customer?.customer_code===cc);if(cu)cu.timeline=t;}}catch{}
+    }
+    S.alerts=S.cases.map(c=>({...c.alert,customerCode:c.customer.customerCode,customerName:c.customer.name,caseId:c.case.caseId}));
+
+    try{
+      const kg=await mcp('tools/call',{name:'get_full_graph',arguments:{}});
+      const content=kg?.content?.[0]?.text;
+      if(content){const d=JSON.parse(content);S.kgEntities=d.entities||[];S.kgRels=d.relationships||[];}
+    }catch{}
+
+    renderAll();
+  }catch(e){console.error('Load error:',e);}
+}
+
+// ── Rendering ──────────────────────────────────────────────
+function renderAll(){renderDash();renderCases();renderCustomers();renderAlerts();}
+
+function renderDash(){
+  const oc=S.cases.filter(c=>c.case.status==='open'||c.case.status==='investigating');
+  const oa=S.alerts.filter(a=>a.status==='open'||a.status==='investigating');
+  g('s1').textContent=oc.length;
+  g('s2').textContent=oa.length;
+  g('s3').textContent=S.customers.length;
+  g('s4').textContent=S.kgEntities.length;
+  g('s5').textContent='6';
+
+  g('dCases').innerHTML=S.cases.length===0?'<div class="loading"><div class="spinner"></div>Loading...</div>':
+    `<table><thead><tr><th>Case</th><th>Type</th><th>Severity</th><th>Status</th></tr></thead><tbody>`+
+    S.cases.map(c=>`<tr class="clickable" onclick="showPage('cases');openCase('${c.case.caseId}')"><td style="font-weight:600">${c.case.caseId}</td><td>${c.alert.alertType.replace(/_/g,' ')}</td><td><span class="b b-${c.alert.severity}">${c.alert.severity}</span></td><td><span class="b b-${c.case.status}">${c.case.status}</span></td></tr>`).join('')+'</tbody></table>';
+
+  g('dAlerts').innerHTML=S.alerts.length===0?'<div class="loading"><div class="spinner"></div>Loading...</div>':
+    `<table><thead><tr><th>Alert</th><th>Customer</th><th>Type</th><th>Severity</th></tr></thead><tbody>`+
+    S.alerts.map(a=>`<tr><td style="font-weight:500">${a.alertId}</td><td>${a.customerCode}</td><td>${a.alertType.replace(/_/g,' ')}</td><td><span class="b b-${a.severity}">${a.severity}</span></td></tr>`).join('')+'</tbody></table>';
+}
+
+function renderCases(){
+  g('caseTbl').innerHTML=S.cases.length===0?'<div class="loading"><div class="spinner"></div>Loading...</div>':
+    `<table><thead><tr><th>Case</th><th>Title</th><th>Customer</th><th>Type</th><th>Severity</th><th>Status</th><th>Priority</th><th>Assigned</th></tr></thead><tbody>`+
+    S.cases.map(c=>`<tr class="clickable" onclick="openCase('${c.case.caseId}')"><td style="font-weight:600">${c.case.caseId}</td><td>${c.case.title}</td><td>${c.customer.customerCode}</td><td>${c.alert.alertType.replace(/_/g,' ')}</td><td><span class="b b-${c.alert.severity}">${c.alert.severity}</span></td><td><span class="b b-${c.case.status}">${c.case.status}</span></td><td><span class="b b-${c.case.priority}">${c.case.priority}</span></td><td>${c.case.assignedTo||'<span style="color:var(--muted)">-</span>'}</td></tr>`).join('')+'</tbody></table>';
+}
+
+function renderCustomers(){
+  g('custTbl').innerHTML=S.customers.length===0?'<div class="loading"><div class="spinner"></div>Loading...</div>':
+    `<table><thead><tr><th>Code</th><th>Name</th><th>Email</th><th>Risk</th><th>Status</th><th>Accounts</th><th>Devices</th></tr></thead><tbody>`+
+    S.customers.map(c=>`<tr class="clickable" onclick="openCust('${c.customer.customer_code}')"><td style="font-weight:600">${c.customer.customer_code}</td><td>${c.customer.name}</td><td style="color:var(--fg2)">${c.customer.email||'-'}</td><td><span class="b b-${c.customer.risk_rating}">${c.customer.risk_rating}</span></td><td><span class="b b-${c.customer.status}">${c.customer.status}</span></td><td>${c.accounts.length}</td><td>${c.devices.length}</td></tr>`).join('')+'</tbody></table>';
+}
+
+function renderAlerts(){
+  g('alertTbl').innerHTML=S.cases.length===0?'<div class="loading"><div class="spinner"></div>Loading...</div>':
+    `<table><thead><tr><th>Alert</th><th>Customer</th><th>Type</th><th>Severity</th><th>Status</th><th>Case</th><th>Description</th></tr></thead><tbody>`+
+    S.alerts.map(a=>`<tr><td style="font-weight:600">${a.alertId}</td><td>${a.customerCode}</td><td>${a.alertType.replace(/_/g,' ')}</td><td><span class="b b-${a.severity}">${a.severity}</span></td><td><span class="b b-${a.status}">${a.status}</span></td><td class="clickable" style="color:var(--accent)" onclick="showPage('cases');openCase('${a.caseId}')">${a.caseId}</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2)">${a.description||''}</td></tr>`).join('')+'</tbody></table>';
+}
+
+// ── Case Detail ────────────────────────────────────────────
+function openCase(cid){
+  const c=S.cases.find(x=>x.case.caseId===cid);if(!c)return;
+  selCase=c;g('caseDetail').classList.remove('hidden');
+  g('cdTitle').textContent=c.case.caseId;
+  g('cdSub').textContent=c.case.title;
+  cdTab('evidence');renderEvidence(c);renderCaseGraph(c);renderTimeline(c);
+  g('cdt-sar').innerHTML='<div class="empty">Click "Draft SAR" to generate a narrative.</div>';
+}
+function cdTab(t){
+  document.querySelectorAll('#cdTabs .tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('[id^="cdt-"]').forEach(x=>x.classList.add('hidden'));
+  const tabs=['evidence','graph','timeline','sar'];
+  document.querySelector(`#cdTabs .tab:nth-child(${tabs.indexOf(t)+1})`)?.classList.add('active');
+  g(`cdt-${t}`).classList.remove('hidden');
+}
+function renderEvidence(c){
+  g('cdt-evidence').innerHTML=`<div class="dp">
+    <div class="ds"><div class="dl">Case Info</div>
+      <div class="dr"><span>Status</span><span class="b b-${c.case.status}">${c.case.status}</span></div>
+      <div class="dr"><span>Priority</span><span class="b b-${c.case.priority}">${c.case.priority}</span></div>
+      <div class="dr"><span>Assigned</span><span>${c.case.assignedTo||'Unassigned'}</span></div>
+      <div class="dr"><span>Created</span><span style="color:var(--fg2)">${c.case.createdAt}</span></div>
+    </div>
+    <div class="ds"><div class="dl">Alert Details</div>
+      <div class="dr"><span>ID</span><span>${c.alert.alertId}</span></div>
+      <div class="dr"><span>Type</span><span>${c.alert.alertType.replace(/_/g,' ')}</span></div>
+      <div class="dr"><span>Severity</span><span class="b b-${c.alert.severity}">${c.alert.severity}</span></div>
+      <div class="dr"><span>Detected</span><span style="color:var(--fg2)">${c.alert.detectedAt}</span></div>
+    </div>
+    <div class="ds fw"><div class="dl">Description</div><div style="font-size:12px;color:var(--fg2);line-height:1.6">${c.alert.description}</div></div>
+    <div class="ds"><div class="dl">Customer</div>
+      <div class="dr"><span>Code</span><span style="font-weight:600">${c.customer.customerCode}</span></div>
+      <div class="dr"><span>Name</span><span>${c.customer.name}</span></div>
+      <div class="dr"><span>Risk</span><span class="b b-${c.customer.riskRating}">${c.customer.riskRating}</span></div>
+    </div>
+    <div class="ds"><div class="dl">Accounts (${c.accounts.length})</div>
+      ${c.accounts.map(a=>`<div class="dr"><span style="font-family:var(--mono);font-size:11px">${a.account_number}</span><span style="font-weight:600">$${a.balance.toLocaleString(undefined,{minimumFractionDigits:2})}</span></div>`).join('')}
+    </div>
+  </div>`;
+}
+function renderCaseGraph(c){
+  const txns=c.transactions;const accts=c.accounts.map(a=>a.account_number);
+  const w=700,h=320,cx=w/2,cy=h/2,r=110;
+  const pos={};accts.forEach((n,i)=>{const a=2*Math.PI*i/accts.length-Math.PI/2;pos[n]={x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)};});
+  g('cdt-graph').innerHTML=`<div class="ds">
+    <div class="dl">Entity Graph — ${c.customer.customerCode}</div>
+    <div style="display:flex;gap:16px;margin-bottom:12px;font-size:12px;color:var(--fg2)"><span>${accts.length} accounts</span><span>${txns.length} transactions</span></div>
+    <div style="background:var(--bg);border-radius:var(--r);padding:12px">
+      <svg viewBox="0 0 ${w} ${h}" style="width:100%;max-height:320px">
+        <defs><marker id="ah" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#6366f1"/></marker>
+        <marker id="ahr" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#ef4444"/></marker></defs>
+        ${txns.map(t=>{const f=pos[t.from_account],to=pos[t.to_account];if(!f||!to)return'';const fl=t.status==='flagged';const c2=fl?'#ef4444':'#6366f1';const mk=fl?'url(#ahr)':'url(#ah)';const dx=to.x-f.x,dy=to.y-f.y,len=Math.sqrt(dx*dx+dy*dy);const nx=-dy/len*7,ny=dx/len*7;
+          return`<line x1="${f.x+nx}" y1="${f.y+ny}" x2="${to.x+nx}" y2="${to.y+ny}" stroke="${c2}" stroke-width="1.5" marker-end="${mk}" opacity="0.6"/><text x="${(f.x+to.x)/2+nx}" y="${(f.y+to.y)/2+ny-5}" fill="${c2}" font-size="9" text-anchor="middle" font-family="var(--mono)">$${(t.amount/1000).toFixed(0)}K</text>`;}).join('')}
+        ${accts.map(n=>{const p=pos[n];const a=c.accounts.find(x=>x.account_number===n);return`<circle cx="${p.x}" cy="${p.y}" r="24" fill="#16161f" stroke="#6366f1" stroke-width="1.5"/><text x="${p.x}" y="${p.y-3}" fill="#e8e8f0" font-size="9" text-anchor="middle" font-weight="600" font-family="var(--mono)">${n.replace('ACC-','')}</text><text x="${p.x}" y="${p.y+9}" fill="#9898b0" font-size="8" text-anchor="middle">$${a?(a.balance/1000).toFixed(0)+'K':'?'}</text>`;}).join('')}
+      </svg>
+    </div>
+    <div style="margin-top:14px"><div class="dl">Transaction Flow</div>
+    ${txns.map(t=>`<div class="flow-step"><span style="font-family:var(--mono);font-size:11px;color:var(--fg2);width:56px">${t.transaction_id}</span><span style="font-family:var(--mono);font-size:11px;font-weight:500">${t.from_account}</span><span class="flow-arrow">&#8594;</span><span style="font-family:var(--mono);font-size:11px;font-weight:500">${t.to_account}</span><span class="flow-amt ${t.status==='flagged'?'flagged':''}">$${t.amount.toLocaleString()}</span><span class="b b-${t.status==='completed'?'low':'high'}">${t.status}</span></div>`).join('')}
+    </div>
+  </div>`;
+}
+function renderTimeline(c){
+  g('cdt-timeline').innerHTML=`<div class="ds"><div class="dl">Transaction Timeline — ${c.transactions.length} transactions</div>
+    <table style="margin-top:10px"><thead><tr><th>ID</th><th>From</th><th>To</th><th>Amount</th><th>Currency</th><th>Status</th><th>Date</th></tr></thead><tbody>`+
+    c.transactions.map(t=>`<tr><td style="font-family:var(--mono);font-weight:500">${t.transaction_id}</td><td style="font-family:var(--mono)">${t.from_account}</td><td style="font-family:var(--mono)">${t.to_account}</td><td style="font-weight:600;color:${t.status==='flagged'?'var(--red)':'var(--green)'}">$${t.amount.toLocaleString()}</td><td>${t.currency}</td><td><span class="b b-${t.status==='completed'?'low':'high'}">${t.status}</span></td><td style="color:var(--fg2);font-size:11px">${t.initiated_at}</td></tr>`).join('')+
+    '</tbody></table></div>';
+}
+
+// ── Customer Detail ────────────────────────────────────────
+function openCust(code){
+  const c=S.customers.find(x=>x.customer.customer_code===code);if(!c)return;
+  const p=g('custDetail');p.classList.remove('hidden');
+  p.innerHTML=`<div class="page-header"><div><div class="page-title">${c.customer.name}</div><div class="page-sub">${c.customer.customer_code} &mdash; ${c.customer.email||''}</div></div><button class="btn" onclick="g('custDetail').classList.add('hidden')">Close</button></div>
+  <div class="dp">
+    <div class="ds"><div class="dl">Profile</div>
+      <div class="dr"><span>Risk</span><span class="b b-${c.customer.risk_rating}">${c.customer.risk_rating}</span></div>
+      <div class="dr"><span>Status</span><span class="b b-${c.customer.status}">${c.customer.status}</span></div>
+      <div class="dr"><span>Created</span><span style="color:var(--fg2)">${c.customer.created_at}</span></div>
+    </div>
+    <div class="ds"><div class="dl">Accounts</div>
+      ${c.accounts.map(a=>`<div class="dr"><div><span style="font-family:var(--mono);font-size:11px">${a.account_number}</span> <span style="font-size:10px;color:var(--fg2)">${a.account_type}</span></div><div style="text-align:right"><div style="font-weight:600">$${a.balance.toLocaleString()}</div></div></div>`).join('')}
+    </div>
+    <div class="ds fw"><div class="dl">Devices</div>
+      ${c.devices.map(d=>`<div class="dr"><span style="font-family:var(--mono);font-size:11px">${d.device_id}</span><span>${d.device_type} &mdash; ${d.os||'?'}</span></div>`).join('')}
+    </div>
+  </div>`;
+}
+
+// ── DEMO SCENARIOS ─────────────────────────────────────────
+async function loadScenarios(){
+  const grid=g('scenarioGrid');
+  if(!apiConnected){
+    grid.innerHTML='<div class="empty">Connect to API server first to load scenarios.</div>';
+    return;
+  }
+  try{
+    const data=await api('/scenarios');
+    grid.innerHTML=data.scenarios.map(s=>`
+      <div class="scenario-card" id="sc-${s.id}" onclick="runScenario('${s.id}')">
+        <div class="scenario-title">${esc(s.title)}</div>
+        <div class="scenario-desc">${esc(s.description)}</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="b b-${s.customer_id==='CUST-001'?'critical':s.customer_id==='CUST-002'?'high':s.customer_id==='CUST-003'?'medium':'low'}">${s.customer_id}</span>
+          <span style="font-size:10px;color:var(--fg2)">${s.alert_type.replace(/_/g,' ')}</span>
+        </div>
+      </div>`).join('');
+  }catch(e){
+    grid.innerHTML=`<div class="empty">Failed to load scenarios: ${esc(e.message)}</div>`;
+  }
+}
+
+async function runScenario(scenarioId){
+  if(scenarioInProgress)return;
+  scenarioInProgress=true;
+  const card=g(`sc-${scenarioId}`);
+  if(card)card.classList.add('running');
+  g('scenarioResult').classList.add('hidden');
+  g('scenarioToolLog').classList.add('hidden');
+
+  addAgentTimeline('alert','Workflow Started',`Running ${scenarioId} scenario...`);
+
+  try{
+    const result=await api('/scenarios/run','POST',{scenario_id:scenarioId});
+    displayScenarioResult(result);
+    displayToolLog(result);
+    showPage('scenarios');
+  }catch(e){
+    g('scenarioResult').innerHTML=`<div class="ds fw"><div class="dl">Error</div><div style="color:var(--red)">${esc(e.message)}</div></div>`;
+    g('scenarioResult').classList.remove('hidden');
+  }
+  if(card)card.classList.remove('running');
+  scenarioInProgress=false;
+}
+
+function displayScenarioResult(result){
+  const det=result.detection||{};
+  const comp=result.compliance||{};
+  const assessment=det.assessment||{};
+  const sar=comp.sar||{};
+
+  const regs=comp.regulationsRetrieved||[];
+
+  addAgentTimeline('detection','Detection Agent Complete',`Risk: ${assessment.riskLevel} (${assessment.riskScore}/100) — ${assessment.summary||''}`);
+  addAgentTimeline('compliance','Compliance Agent Complete',`Regulations found: ${regs.length}`);
+  addAgentTimeline('sar','SAR Generated',`Action: ${sar.recommendedAction||'REVIEW'}`);
+
+  const actionColor=sar.recommendedAction==='APPROVE'?'green':sar.recommendedAction==='BLOCK'?'red':'yellow';
+
+  g('scenarioResult').innerHTML=`
+    <div class="dp">
+      <div class="ds"><div class="dl">Risk Assessment</div>
+        <div class="dr"><span>Risk Score</span><span style="font-weight:700;font-size:18px;color:${assessment.riskLevel==='HIGH'?'var(--red)':assessment.riskLevel==='MEDIUM'?'var(--yellow)':'var(--green)'}">${assessment.riskScore}/100</span></div>
+        <div class="dr"><span>Risk Level</span><span class="b b-${assessment.riskLevel}">${assessment.riskLevel}</span></div>
+        <div class="dr"><span>Recommended Action</span><span class="b b-${sar.recommendedAction}">${sar.recommendedAction}</span></div>
+      </div>
+      <div class="ds"><div class="dl">Detection Reasons</div>
+        ${(assessment.detectionReasons||[]).map(r=>`<div style="font-size:11px;color:var(--fg2);padding:4px 0;border-bottom:1px solid var(--border)">${esc(r)}</div>`).join('')||'<div style="color:var(--muted)">No reasons</div>'}
+      </div>
+      <div class="ds fw"><div class="dl">SAR Summary</div><div class="narrative">${esc(sar.narrative||'No SAR generated')}</div></div>
+      <div class="ds fw"><div class="dl">Retrieved Regulations (${regs.length})</div>
+        ${regs.map(r=>`<div class="search-result"><div class="search-result-title">${esc(r.title)}</div><div class="search-result-meta">${r.docId} &nbsp; Score: ${(r.relevanceScore*100).toFixed(0)}%</div><div class="search-result-excerpt">${esc(r.excerpt)}</div></div>`).join('')||'<div style="color:var(--muted)">No regulations retrieved</div>'}
+      </div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button class="btn btn-p" onclick="g('scenarioResult').classList.add('hidden')">Close</button>
+      <button class="btn" onclick="showPage('agent-timeline')">View Full Timeline</button>
+    </div>`;
+  g('scenarioResult').classList.remove('hidden');
+}
+
+function displayToolLog(result){
+  const evidence=result.detection?.evidence||[];
+  const logContent=g('toolLogContent');
+  logContent.innerHTML=evidence.map((e,i)=>`
+    <div class="tool-log-item">
+      <span class="tool-log-name">${esc(e.tool)}</span>
+      <span class="tool-log-status ok">&#10003;</span>
+      <span class="tool-log-detail">${esc(JSON.stringify(e.result).substring(0,150))}</span>
+    </div>
+  `).join('')+'<div class="tool-log-item"><span class="tool-log-name">compliance_analysis</span><span class="tool-log-status ok">&#10003;</span><span class="tool-log-detail">Regulations retrieved: '+(result.compliance?.regulationsRetrieved?.length||0)+'</span></div>';
+  g('scenarioToolLog').classList.remove('hidden');
+}
+
+// ── Agent Timeline ─────────────────────────────────────────
+function addAgentTimeline(type,title,desc){
+  const time=new Date().toLocaleTimeString();
+  agentTimeline.push({type,title,desc,time});
+  renderAgentTimeline();
+}
+
+function renderAgentTimeline(){
+  const container=g('agentTimelineContent');
+  if(agentTimeline.length===0){
+    container.innerHTML='<div class="empty">No activity yet. Run a demo scenario to see agent collaboration.</div>';
+    return;
+  }
+  container.innerHTML=agentTimeline.map(item=>`
+    <div class="tl-item">
+      <div class="tl-dot ${item.type}"></div>
+      <div class="tl-time">${item.time}</div>
+      <div class="tl-title">${esc(item.title)}</div>
+      <div class="tl-desc">${esc(item.desc)}</div>
+    </div>
+  `).join('');
+}
+
+// ── RAG Search ─────────────────────────────────────────────
+async function doRagSearch(){
+  const q=g('ragQuery').value.trim();if(!q)return;
+  g('ragResults').innerHTML='<div class="loading"><div class="spinner"></div>Searching MCP...</div>';
+  try{
+    const r=await mcp('tools/call',{name:'search_regulations',arguments:{query:q,limit:5}});
+    const content=r?.content?.[0]?.text;const data=JSON.parse(content);
+    if(data.results.length===0){g('ragResults').innerHTML='<div class="empty">No results found.</div>';return;}
+    g('ragResults').innerHTML=data.results.map(res=>`
+      <div class="search-result" onclick="viewRegDoc('${res.docId}')">
+        <div class="search-result-title">${res.title}</div>
+        <div class="search-result-meta"><span class="b b-${res.docType==='regulation'?'open':res.docType==='sar_precedent'?'investigating':'low'}">${res.docType}</span> &nbsp; Score: ${res.relevanceScore} &nbsp; ${res.source||''}</div>
+        <div class="search-result-excerpt">${esc(res.excerpt)}</div>
+      </div>`).join('');
+  }catch(e){g('ragResults').innerHTML='<div class="empty">Error: '+e.message+'</div>';}
+}
+
+async function doRagSearchAPI(){
+  const q=g('ragQuery').value.trim();if(!q)return;
+  if(!apiConnected){g('ragResults').innerHTML='<div class="empty">API not connected</div>';return;}
+  g('ragResults').innerHTML='<div class="loading"><div class="spinner"></div>Searching RAG API...</div>';
+  try{
+    const data=await api(`/rag/search?query=${encodeURIComponent(q)}&limit=5`);
+    if(data.results.length===0){g('ragResults').innerHTML='<div class="empty">No results found.</div>';return;}
+    g('ragResults').innerHTML=data.results.map(res=>`
+      <div class="search-result">
+        <div class="search-result-title">${esc(res.title)}</div>
+        <div class="search-result-meta">${res.docId} &nbsp; Score: ${(res.relevanceScore*100).toFixed(0)}% &nbsp; ${res.source||''}</div>
+        <div class="search-result-excerpt">${esc(res.excerpt)}</div>
+      </div>`).join('');
+  }catch(e){g('ragResults').innerHTML='<div class="empty">Error: '+e.message+'</div>';}
+}
+
+async function viewRegDoc(docId){
+  try{
+    const r=await mcp('tools/call',{name:'get_regulation_detail',arguments:{docId}});
+    const content=r?.content?.[0]?.text;const data=JSON.parse(content);
+    const p=g('ragDocView');p.classList.remove('hidden');
+    p.innerHTML=`<div class="ds fw"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div class="dl">Document</div><div style="font-size:15px;font-weight:600">${data.title}</div><div style="font-size:11px;color:var(--fg2);margin-top:2px"><span class="b b-open">${data.docType}</span> &nbsp; ${data.source||''}</div></div><button class="btn" onclick="g('ragDocView').classList.add('hidden')">Close</button></div><div class="narrative">${esc(data.content)}</div></div>`;
+  }catch(e){alert('Error: '+e.message);}
+}
+function searchRegsForCase(){
+  if(!selCase)return;
+  const q=selCase.alert.alertType.replace(/_/g,' ')+' '+selCase.customer.customerCode;
+  showPage('rag');g('ragQuery').value=q;doRagSearch();
+}
+
+// ── Knowledge Graph ────────────────────────────────────────
+async function loadKG(){
+  g('kgSvg').innerHTML='<text x="50%" y="50%" text-anchor="middle" fill="#6868808c" font-size="12">Loading graph...</text>';
+  try{
+    const r=await mcp('tools/call',{name:'get_full_graph',arguments:{}});
+    const content=r?.content?.[0]?.text;const data=JSON.parse(content);
+    S.kgEntities=data.entities||[];S.kgRels=data.relationships||[];
+    renderKG();
+  }catch(e){g('kgSvg').innerHTML=`<text x="50%" y="50%" text-anchor="middle" fill="#ef4444" font-size="12">Error: ${e.message}</text>`;}
+}
+async function detectMuleNetwork(){
+  try{
+    const r=await mcp('tools/call',{name:'detect_mule_network',arguments:{}});
+    const content=r?.content?.[0]?.text;const data=JSON.parse(content);
+    g('kgInfo').innerHTML=`<div class="dp">
+      <div class="ds"><div class="dl">Communities Detected</div><div style="font-size:20px;font-weight:700">${data.communityCount}</div>
+      ${data.communities.map((c,i)=>`<div class="dr"><span>Community ${i+1} (${c.size} entities, density: ${c.density})</span><span style="font-family:var(--mono);font-size:10px;color:var(--fg2)">${c.entityIds.join(', ')}</span></div>`).join('')}
+      </div>
+      <div class="ds"><div class="dl">High Risk Entities (${data.highRiskEntities.length})</div>
+      ${data.highRiskEntities.map(e=>`<div class="dr"><span><span class="b b-${e.type}">${e.type}</span> ${e.name}</span><span style="font-weight:600;color:var(--red)">${(e.riskScore*100).toFixed(0)}%</span></div>`).join('')}
+      </div>
+    </div>`;
+  }catch(e){alert('Error: '+e.message);}
+}
+async function loadHighRisk(){
+  try{
+    const r=await mcp('tools/call',{name:'get_full_graph',arguments:{}});
+    const content=r?.content?.[0]?.text;const data=JSON.parse(content);
+    S.kgEntities=(data.entities||[]).filter(e=>e.riskScore>=0.5);
+    S.kgRels=(data.relationships||[]).filter(r=>S.kgEntities.some(e=>e.entityId===r.from)&&S.kgEntities.some(e=>e.entityId===r.to));
+    renderKG();
+  }catch(e){}
+}
+
+function renderKG(){
+  const svg=g('kgSvg');
+  const W=svg.clientWidth||800,H=500;
+  svg.innerHTML='';
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+
+  const nodes=S.kgEntities.map((e,i)=>({...e,id:e.entityId,x:W/2+Math.random()*200-100,y:H/2+Math.random()*200-100,index:i}));
+  const nodeMap=new Map(nodes.map(n=>[n.id,n]));
+  const links=S.kgRels.filter(r=>nodeMap.has(r.from)&&nodeMap.has(r.to)).map(r=>({source:nodeMap.get(r.from),target:nodeMap.get(r.to),type:r.type,weight:r.weight}));
+
+  const typeColor={person:'#6366f1',company:'#a855f7',account:'#06b6d4',device:'#22c55e',ip_address:'#eab308',beneficiary:'#ec4899',mule_handler:'#dc2626'};
+
+  let alpha=1;
+  function tick(){
+    for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++){
+      let dx=nodes[j].x-nodes[i].x,dy=nodes[j].y-nodes[i].y;
+      let d=Math.sqrt(dx*dx+dy*dy)||1;
+      let f=800/(d*d)*alpha;
+      nodes[i].x-=dx/d*f;nodes[i].y-=dy/d*f;
+      nodes[j].x+=dx/d*f;nodes[j].y+=dy/d*f;
+    }
+    for(const l of links){
+      let dx=l.target.x-l.source.x,dy=l.target.y-l.source.y;
+      let d=Math.sqrt(dx*dx+dy*dy)||1;
+      let f=(d-80)*0.005*alpha;
+      l.source.x+=dx/d*f;l.source.y+=dy/d*f;
+      l.target.x-=dx/d*f;l.target.y-=dy/d*f;
+    }
+    for(const n of nodes){n.x+=(W/2-n.x)*0.001*alpha;n.y+=(H/2-n.y)*0.001*alpha;n.x=Math.max(30,Math.min(W-30,n.x));n.y=Math.max(30,Math.min(H-30,n.y));}
+    alpha*=0.99;
+  }
+  for(let i=0;i<200;i++)tick();
+
+  let html='<defs><marker id="kgAh" markerWidth="6" markerHeight="4" refX="6" refY="2" orient="auto"><polygon points="0 0,6 2,0 4" fill="#555"/></marker></defs>';
+
+  for(const l of links){
+    const suspicious=['transfers_to','is_mule_for','layered_through'].includes(l.type);
+    const color=suspicious?'#ef4444':'#444';
+    html+=`<line x1="${l.source.x}" y1="${l.source.y}" x2="${l.target.x}" y2="${l.target.y}" stroke="${color}" stroke-width="${Math.min(3,l.weight*2)}" opacity="0.4" marker-end="url(#kgAh)"/>`;
+    const mx=(l.source.x+l.target.x)/2,my=(l.source.y+l.target.y)/2;
+    html+=`<text x="${mx}" y="${my-3}" fill="${color}" font-size="7" text-anchor="middle" opacity="0.6">${l.type.replace(/_/g,' ')}</text>`;
+  }
+
+  for(const n of nodes){
+    const color=typeColor[n.type]||'#666';
+    const riskSize=n.riskScore>0.7?10:n.riskScore>0.4?8:6;
+    html+=`<circle cx="${n.x}" cy="${n.y}" r="${riskSize+4}" fill="${color}22" stroke="${color}" stroke-width="1.5" style="cursor:pointer" onclick="selectKGNode('${n.id}')"/>`;
+    html+=`<circle cx="${n.x}" cy="${n.y}" r="${riskSize}" fill="${color}" opacity="0.8"/>`;
+    html+=`<text x="${n.x}" y="${n.y+riskSize+12}" fill="#ccc" font-size="8" text-anchor="middle" font-family="var(--mono)">${n.name.length>16?n.name.substring(0,14)+'..':n.name}</text>`;
+  }
+  svg.innerHTML=html;
+}
+
+async function selectKGNode(entityId){
+  try{
+    const r=await mcp('tools/call',{name:'query_knowledge_graph',arguments:{entityId,depth:1}});
+    const content=r?.content?.[0]?.text;const data=JSON.parse(content);
+    g('kgInfo').innerHTML=`<div class="dp">
+      <div class="ds"><div class="dl">Entity: ${data.entityId}</div>
+        ${data.entities.filter(e=>e.entityId===entityId).map(e=>`<div><div style="font-size:14px;font-weight:600">${e.name}</div><div style="font-size:11px;color:var(--fg2);margin-top:4px"><span class="b b-${e.type}">${e.type}</span> Risk: ${(e.riskScore*100).toFixed(0)}%</div></div>`).join('')}
+      </div>
+      <div class="ds"><div class="dl">Neighbors (${data.entityCount-1})</div>
+        ${data.entities.filter(e=>e.entityId!==entityId).map(e=>`<div class="dr"><span><span class="b b-${e.type}">${e.type}</span> ${e.name}</span><span>${(e.riskScore*100).toFixed(0)}%</span></div>`).join('')}
+      </div>
+      <div class="ds fw"><div class="dl">Relationships (${data.relationshipCount})</div>
+        ${data.relationships.map(r=>`<div class="dr"><span style="font-family:var(--mono);font-size:11px">${r.from}</span><span style="color:var(--accent)">${r.type.replace(/_/g,' ')}</span><span style="font-family:var(--mono);font-size:11px">${r.to}</span></div>`).join('')}
+      </div>
+    </div>`;
+  }catch(e){}
+}
+
+// ── Tool Execution ─────────────────────────────────────────
+async function runTool(name,args){
+  try{
+    const r=await mcp('tools/call',{name,arguments:args});
+    const content=r?.content?.[0]?.text;
+    showResult(name,content);
+    S.auditLog.push({tool:name,input:JSON.stringify(args),output:content,time:new Date().toLocaleTimeString()});
+    addAgentTimeline('detection',`Tool: ${name}`,'MCP tool executed successfully');
+    renderAudit();
+  }catch(e){showResult(name,'Error: '+e.message);}
+}
+async function runDraftSar(){
+  if(!selCase)return;
+  try{
+    const r=await mcp('tools/call',{name:'draft_sar',arguments:{caseId:selCase.case.caseId}});
+    const content=r?.content?.[0]?.text;
+    cdTab('sar');
+    g('cdt-sar').innerHTML=`<div style="background:#dc2626;color:white;padding:10px 16px;font-weight:700;font-size:12px;text-align:center;letter-spacing:0.04em;border-bottom:2px solid #991b1b;border-radius:var(--r) var(--r) 0 0">DRAFT &mdash; PENDING REVIEW</div><div class="ds" style="border-top:none;border-radius:0 0 var(--r) var(--r)"><div class="dl">SAR Narrative</div><div class="narrative">${esc(content)}</div></div>`;
+    S.auditLog.push({tool:'draft_sar',input:JSON.stringify({caseId:selCase.case.caseId}),output:content,time:new Date().toLocaleTimeString()});
+    addAgentTimeline('sar','Draft SAR Generated',`For case ${selCase.case.caseId}`);
+    renderAudit();
+  }catch(e){alert('Error: '+e.message);}
+}
+function showResult(title,content){
+  let parsed;try{parsed=JSON.parse(content)}catch{parsed=content}
+  const fmt=typeof parsed==='string'?parsed:JSON.stringify(parsed,null,2);
+  const m=document.createElement('div');m.className='modal-bg';m.onclick=e=>{if(e.target===m)m.remove()};
+  m.innerHTML=`<div class="modal"><div class="modal-h"><h3 style="font-size:14px;font-weight:600">${title}</h3><button class="btn" onclick="this.closest('.modal-bg').remove()">Close</button></div><div class="modal-b"><pre style="font-family:var(--mono);font-size:11px;line-height:1.7;white-space:pre-wrap;color:var(--fg2)">${esc(fmt)}</pre></div></div>`;
+  document.body.appendChild(m);
+}
+
+// ── Audit Log ──────────────────────────────────────────────
+function renderAudit(){
+  if(S.auditLog.length===0)return;
+  g('auditTbl').innerHTML=`<table><thead><tr><th>Time</th><th>Tool</th><th>Input</th><th>Output (truncated)</th></tr></thead><tbody>`+
+    S.auditLog.map(a=>`<tr><td style="color:var(--fg2)">${a.time}</td><td style="font-weight:500">${a.tool}</td><td style="font-family:var(--mono);font-size:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.input)}</td><td style="font-family:var(--mono);font-size:10px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.output?.substring(0,120)||'')}</td></tr>`).join('')+'</tbody></table>';
+}
+
+// ── Navigation ─────────────────────────────────────────────
+function showPage(p){
+  document.querySelectorAll('[id^="pg-"]').forEach(x=>x.classList.add('hidden'));
+  g(`pg-${p}`).classList.remove('hidden');
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.querySelector(`.nav-item[data-page="${p}"]`)?.classList.add('active');
+  if(p==='kg'&&!S.kgEntities.length)loadKG();
+  if(p==='scenarios')loadScenarios();
+}
+
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+showPage('dashboard');
+</script>
+</body>
+</html>

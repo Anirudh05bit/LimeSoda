@@ -127,3 +127,65 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_tool    ON audit_log(tool_name);
 CREATE INDEX IF NOT EXISTS idx_audit_actor   ON audit_log(actor_subject);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+
+-- ============================================================
+-- RAG — DOCUMENTS (regulatory references, SARs, playbooks)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS documents (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_id        TEXT    NOT NULL UNIQUE,
+  title         TEXT    NOT NULL,
+  doc_type      TEXT    NOT NULL CHECK (doc_type IN ('regulation','sar_precedent','playbook','guidance')),
+  source        TEXT,
+  content       TEXT    NOT NULL,
+  created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_docs_type ON documents(doc_type);
+
+-- Chunks for retrieval (split from document content)
+CREATE TABLE IF NOT EXISTS document_chunks (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  document_id   INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  chunk_index   INTEGER NOT NULL,
+  content       TEXT    NOT NULL,
+  keywords      TEXT,   -- comma-separated keywords for TF-IDF style retrieval
+  created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_doc ON document_chunks(document_id);
+
+-- ============================================================
+-- KNOWLEDGE GRAPH — ENTITIES & RELATIONSHIPS
+-- ============================================================
+CREATE TABLE IF NOT EXISTS kg_entities (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity_id     TEXT    NOT NULL UNIQUE,
+  entity_type   TEXT    NOT NULL CHECK (entity_type IN ('person','company','account','device','ip_address','phone','email','beneficiary','mule_handler')),
+  name          TEXT    NOT NULL,
+  attributes    TEXT,   -- JSON blob for type-specific attributes
+  risk_score    REAL    DEFAULT 0,
+  created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_kg_entity_type ON kg_entities(entity_type);
+CREATE INDEX IF NOT EXISTS idx_kg_entity_id   ON kg_entities(entity_id);
+
+CREATE TABLE IF NOT EXISTS kg_relationships (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_entity_id TEXT NOT NULL REFERENCES kg_entities(entity_id) ON DELETE CASCADE,
+  target_entity_id TEXT NOT NULL REFERENCES kg_entities(entity_id) ON DELETE CASCADE,
+  relationship_type TEXT NOT NULL CHECK (relationship_type IN (
+    'owns','controls','accesses','transfers_to','associated_with',
+    'employs','registered_at','uses_device','uses_ip','receives_from',
+    'is_mule_for','layered_through','connected_to'
+  )),
+  weight          REAL DEFAULT 1.0,
+  attributes      TEXT,  -- JSON blob
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_kg_rel_source ON kg_relationships(source_entity_id);
+CREATE INDEX IF NOT EXISTS idx_kg_rel_target ON kg_relationships(target_entity_id);
+CREATE INDEX IF NOT EXISTS idx_kg_rel_type   ON kg_relationships(relationship_type);

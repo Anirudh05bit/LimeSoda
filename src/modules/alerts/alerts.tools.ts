@@ -3,6 +3,8 @@ import { AlertService } from './alerts.service.js';
 import { AuditLogMiddleware } from '../../middleware/audit-log.middleware.js';
 import type { ResourceLink } from '@nitrostack/core';
 
+const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || '';
+
 @Injectable({ deps: [AlertService] })
 export class AlertsTools {
   constructor(private alertService: AlertService) {}
@@ -79,5 +81,89 @@ export class AlertsTools {
       priority: result.priority,
       evidence,
     };
+  }
+
+  @Tool({
+    name: 'send_slack_alert',
+    title: 'Send Slack Alert',
+    description:
+      'Send a Slack notification for a high-risk fraud alert. Includes customer ID, transaction details, risk score, detection reason, and SAR summary. Requires SLACK_WEBHOOK_URL environment variable.',
+    inputSchema: z.object({
+      customerId: z.string().describe('Customer code, e.g. CUST-001'),
+      transactionId: z.string().describe('Transaction ID, e.g. TXN-001'),
+      riskScore: z.number().describe('Risk score (0-100)'),
+      detectionReason: z.string().describe('Reason for the alert/fraud detection'),
+      sarSummary: z.string().describe('Summary of the Suspicious Activity Report'),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  })
+  async sendSlackAlert(
+    input: {
+      customerId: string;
+      transactionId: string;
+      riskScore: number;
+      detectionReason: string;
+      sarSummary: string;
+    },
+    context: ExecutionContext
+  ) {
+    if (!SLACK_WEBHOOK_URL) {
+      return {
+        status: 'skipped',
+        message: 'Slack webhook URL not configured (set SLACK_WEBHOOK_URL env var)',
+      };
+    }
+
+    const blocks = {
+      blocks: [
+        {
+          type: 'header',
+          text: { type: 'plain_text', text: '🚨 High Risk Fraud Alert' },
+        },
+        {
+          type: 'section',
+          fields: [
+            { type: 'mrkdwn', text: `*Customer:*\n${input.customerId}` },
+            { type: 'mrkdwn', text: `*Transaction:*\n${input.transactionId}` },
+            { type: 'mrkdwn', text: `*Risk Score:*\n${input.riskScore}/100` },
+          ],
+        },
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: `*Detection Reason:*\n${input.detectionReason}` },
+        },
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: `*SAR Summary:*\n${input.sarSummary}` },
+        },
+      ],
+    };
+
+    try {
+      const response = await fetch(SLACK_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(blocks),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Slack API returned ${response.status}`);
+      }
+
+      return {
+        status: 'sent',
+        message: 'Slack alert sent successfully',
+      };
+    } catch (error) {
+      return {
+        status: 'failed',
+        message: `Failed to send Slack alert: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
   }
 }
