@@ -1,6 +1,7 @@
-import { ResourceDecorator as Resource, ExecutionContext } from '@nitrostack/core';
+import { ResourceDecorator as Resource, Injectable, ExecutionContext } from '@nitrostack/core';
 import { CaseService } from './cases.service.js';
 
+@Injectable({ deps: [CaseService] })
 export class CasesResources {
   constructor(private caseService: CaseService) {}
 

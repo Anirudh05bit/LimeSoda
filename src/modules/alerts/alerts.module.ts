@@ -1,11 +1,10 @@
 import { Module } from '@nitrostack/core';
-import { alertsTools } from './alerts.tools.js';
-import { alertsResources } from './alerts.resources.js';
-import { alertsPrompts } from './alerts.prompts.js';
+import { AlertService } from './alerts.service.js';
+import { AlertsTools } from './alerts.tools.js';
 
 @Module({
   name: 'alerts',
-  description: 'TODO: Add description',
-  controllers: [alertsTools, alertsResources, alertsPrompts],
+  controllers: [AlertsTools],
+  providers: [AlertService],
 })
-export class alertsModule {}
+export class AlertsModule {}

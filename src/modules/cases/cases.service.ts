@@ -1,8 +1,6 @@
 import { Injectable } from '@nitrostack/core';
 import Database from 'better-sqlite3';
-import { join } from 'node:path';
-
-const DB_PATH = join(process.cwd(), 'tracelens.db');
+import { DB_PATH } from '../../database/db-path.js';
 
 @Injectable()
 export class CaseService {

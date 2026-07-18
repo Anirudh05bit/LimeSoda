@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Local database (ephemeral, created via npm run setup-db)
+tracelens.db
+tracelens.db-wal
+tracelens.db-shm
+
+# Generated types (regenerate with nitrostack-cli generate types)
+src/types/generated-tools.ts
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
