@@ -1,7 +1,10 @@
 import Database from 'better-sqlite3';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 const DB_PATH = join(process.cwd(), 'tracelens.db');
 
 export function runSeed() {
